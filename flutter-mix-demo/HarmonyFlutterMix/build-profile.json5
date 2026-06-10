@@ -1,0 +1,64 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/huhuiping/.ohos/config/default_HarmonyFlutterMix_s8PCots8DeaOVniKURUliw9VZyd_T3WXurvP5D5-4Nk=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001B7661A3B4FBAACC65DC071E44D803FE4B8684ADFDC27B11390072B2CCD149F3C48F92CE16EB6B42",
+          "profile": "/Users/huhuiping/.ohos/config/default_HarmonyFlutterMix_s8PCots8DeaOVniKURUliw9VZyd_T3WXurvP5D5-4Nk=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/huhuiping/.ohos/config/default_HarmonyFlutterMix_s8PCots8DeaOVniKURUliw9VZyd_T3WXurvP5D5-4Nk=.p12",
+          "storePassword": "0000001BD23C87ADCA8D77C180DBF12FB3F63DC5A9877E31DFA50ED20028B4D6FD8315CF883C8DF6725A59"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "compatibleSdkVersion": "5.0.0(12)",
+        "runtimeOS": "HarmonyOS"
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "profile"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "flutter_module",
+      "srcPath": "../my_flutter_module/.ohos/flutter_module",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

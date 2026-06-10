@@ -1,0 +1,11 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "HarmonyOS Attach",
+      "cwd": "${workspaceFolder}",
+      "request": "attach",
+      "type": "dart"
+    }
+  ]
+}
