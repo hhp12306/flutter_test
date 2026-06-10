@@ -8,7 +8,7 @@ class MyFlutterApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Mix Demo',
+      title: 'Flutter Mix Demo哈哈哈哈',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
@@ -40,7 +40,7 @@ class _DemoHomePageState extends State<DemoHomePage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text(
-              '这是来自 Flutter 的内容！',
+              '这是来自 Flutter 的内容！来了来了',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),

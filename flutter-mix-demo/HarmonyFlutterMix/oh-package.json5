@@ -9,9 +9,5 @@
   "dependencies": {},
   "devDependencies": {
     "@ohos/hypium": "1.0.6"
-  },
-  "overrides": {
-    "@ohos/flutter_ohos": "file:../my_flutter_module/build/ohos/har/debug/flutter.har",
-    "@ohos/flutter_module": "file:../my_flutter_module/build/ohos/har/debug/flutter_module.har"
   }
 }
