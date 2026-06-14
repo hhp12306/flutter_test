@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>DIWeb Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 16px; background: #f0f4f8; color: #333; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .status { font-size: 13px; color: #007AFF; margin-bottom: 12px; }
+    .status.error { color: #ff3b30; }
+    .card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .card h2 { font-size: 15px; margin-bottom: 8px; }
+    .metrics { font-size: 12px; line-height: 1.8; color: #555; }
+    .metrics b { color: #333; }
+    button {
+      display: inline-block; padding: 10px 12px; margin: 4px 4px 0 0;
+      border: none; border-radius: 8px; background: #007AFF; color: #fff;
+      font-size: 13px;
+    }
+    button:active { opacity: 0.8; }
+    button.secondary { background: #e8e8e8; color: #333; }
+    button.warn { background: #FF9500; }
+    pre { background: #f8f8f8; padding: 10px; border-radius: 8px; font-size: 11px; overflow: auto; white-space: pre-wrap; word-break: break-all; max-height: 200px; }
+    .tag { display: inline-block; background: #eef4ff; color: #007AFF; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 6px; }
+  </style>
+  <!-- 模拟公司项目：H5 页面静态引入 Bridge SDK -->
+  <script src="sdk/enterprise-bridge-sdk.js"></script>
+</head>
+<body>
+  <h1>DIWeb H5 Demo</h1>
+  <p id="status" class="status">Bridge 初始化中...</p>
+  <p><span class="tag" id="apiCountTag">API: --</span><span class="tag" id="sdkTag">SDK: loading</span></p>
+
+  <div class="card">
+    <h2>⏱ 加载耗时（压测 JSAPI 数量影响）</h2>
+    <div class="metrics" id="perfMetrics">统计中...</div>
+    <button class="secondary" onclick="refreshPerf()">刷新统计</button>
+    <button class="warn" onclick="batchTestApis()">批量调用 20 个 API</button>
+  </div>
+
+  <div class="card">
+    <h2>常用 API</h2>
+    <button onclick="testApi('getAppInfo')">getAppInfo</button>
+    <button onclick="testApi('getUserInfo')">getUserInfo</button>
+    <button onclick="testApi('getVehicleInfo')">getVehicleInfo</button>
+    <button onclick="testApi('getOrderList')">getOrderList</button>
+    <button onclick="testApi('toast', {message:'Hello'})">toast</button>
+    <button onclick="testApi('setTitle', {title:'新标题'})">setTitle</button>
+    <button class="secondary" onclick="testApi('close')">close</button>
+  </div>
+
+  <div class="card">
+    <h2>车控 / 业务 API</h2>
+    <button onclick="testApi('remoteLock')">remoteLock</button>
+    <button onclick="testApi('remoteUnlock')">remoteUnlock</button>
+    <button onclick="testApi('remoteStart')">remoteStart</button>
+    <button onclick="testApi('getBatteryLevel')">getBatteryLevel</button>
+    <button onclick="testApi('getChargeStatus')">getChargeStatus</button>
+    <button onclick="testApi('bookService')">bookService</button>
+  </div>
+
+  <div class="card">
+    <pre id="output">等待操作...</pre>
+  </div>
+
+  <script>
+    var PAGE_START = Date.now();
+    var statusEl = document.getElementById('status');
+    var outputEl = document.getElementById('output');
+    var perfEl = document.getElementById('perfMetrics');
+    var apiCountTag = document.getElementById('apiCountTag');
+    var sdkTag = document.getElementById('sdkTag');
+
+    function log(data) {
+      outputEl.textContent = JSON.stringify(data, null, 2);
+    }
+
+    function checkBridge() {
+      var ready = window.DIWeb && window.DIWebBridge && window.__DIWEB_BRIDGE_READY__;
+      if (ready) {
+        statusEl.textContent = 'Bridge 已就绪 ✓';
+        statusEl.className = 'status';
+        apiCountTag.textContent = 'API: ' + (window.DIWeb._apiCount || '?');
+        return true;
+      }
+      statusEl.textContent = 'Bridge 未就绪，等待原生注入...';
+      statusEl.className = 'status error';
+      return false;
+    }
+
+    function refreshPerf() {
+      var info = window.BridgeSDK ? BridgeSDK.getPerfInfo() : {};
+      var domReady = PAGE_START;
+      var lines = [
+        '<b>页面启动</b>: ' + new Date(PAGE_START).toLocaleTimeString(),
+        '<b>H5 SDK 加载耗时</b>: ' + (info.sdkLoadCost != null ? info.sdkLoadCost + ' ms' : '--'),
+        '<b>Bridge 注入等待</b>: ' + (info.bridgeWaitCost >= 0 ? info.bridgeWaitCost + ' ms' : '等待中'),
+        '<b>当前总耗时</b>: ' + (info.totalCost != null ? info.totalCost + ' ms' : (Date.now() - PAGE_START) + ' ms'),
+        '<b>注册 API 数量</b>: ' + (info.apiCount || '--'),
+        '<b>SDK 版本</b>: ' + (info.sdkVersion || '--'),
+        '<b>SDK 静态文件</b>: ' + (window.__BRIDGE_SDK_LOADED__ ? '已加载' : '未加载')
+      ];
+      perfEl.innerHTML = lines.join('<br/>');
+    }
+
+    function testApi(method, params) {
+      if (!checkBridge()) return;
+      var start = Date.now();
+      try {
+        var res = BridgeSDK.call(method, params || {});
+        log({ method: method, costMs: Date.now() - start, result: res });
+      } catch (e) {
+        log({ method: method, error: e.message, costMs: Date.now() - start });
+      }
+    }
+
+    function batchTestApis() {
+      if (!checkBridge() || !window.DIWeb.getApiList) return;
+      var list = DIWeb.getApiList();
+      var batch = list.slice(0, 20);
+      var start = Date.now();
+      var result = BridgeSDK.batchCall(batch);
+      log({
+        action: 'batchCall',
+        count: batch.length,
+        totalCostMs: Date.now() - start,
+        methods: batch,
+        result: result
+      });
+    }
+
+    sdkTag.textContent = window.__BRIDGE_SDK_LOADED__ ? 'SDK: v' + (BridgeSDK.version || '?') : 'SDK: fail';
+
+    var checkCount = 0;
+    var timer = setInterval(function () {
+      checkCount++;
+      if (checkBridge()) {
+        refreshPerf();
+        clearInterval(timer);
+      } else if (checkCount > 30) {
+        refreshPerf();
+        clearInterval(timer);
+      }
+    }, 200);
+
+    document.addEventListener('DOMContentLoaded', function () {
+      refreshPerf();
+    });
+  </script>
+</body>
+</html>

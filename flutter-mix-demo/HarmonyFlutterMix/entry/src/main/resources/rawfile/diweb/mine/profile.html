@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>个人资料</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #f5f5f5; }
+    .avatar { text-align: center; padding: 32px 0 16px; background: #fff; }
+    .avatar-circle { width: 80px; height: 80px; border-radius: 40px; background: #007AFF; color: #fff; font-size: 32px; line-height: 80px; margin: 0 auto 12px; }
+    .card { background: #fff; margin-top: 12px; }
+    .row { display: flex; justify-content: space-between; padding: 16px; border-bottom: 1px solid #f0f0f0; font-size: 15px; }
+    .row:last-child { border: none; }
+    .label { color: #333; }
+    .value { color: #999; }
+  </style>
+</head>
+<body>
+  <div class="avatar">
+    <div class="avatar-circle">用</div>
+    <p style="margin:0;font-size:18px;font-weight:500;">用户昵称</p>
+  </div>
+  <div class="card">
+    <div class="row"><span class="label">手机号</span><span class="value">138****8888</span></div>
+    <div class="row"><span class="label">邮箱</span><span class="value">user@example.com</span></div>
+    <div class="row"><span class="label">会员等级</span><span class="value">黄金会员</span></div>
+  </div>
+  <div class="card">
+    <div class="row"><span class="label">消息通知</span><span class="value">已开启 ›</span></div>
+    <div class="row"><span class="label">隐私设置</span><span class="value">›</span></div>
+    <div class="row"><span class="label">关于我们</span><span class="value">v1.0.0 ›</span></div>
+  </div>
+</body>
+</html>

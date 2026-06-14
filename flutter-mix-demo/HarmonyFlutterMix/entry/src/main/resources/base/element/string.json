@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "label"
+    },
+    {
+      "name": "internet_permission_reason",
+      "value": "用于加载 H5 页面内容"
     }
   ]
 }

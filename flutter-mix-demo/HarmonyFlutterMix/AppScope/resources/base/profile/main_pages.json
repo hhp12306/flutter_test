@@ -1,5 +1,8 @@
 {
-    "src": [
-        "pages/Index"
-    ]
+  "src": [
+    "pages/Index",
+    "pages/DIWebPage",
+    "pages/mine/MineSubPage",
+    "pages/mine/WebLoadMonitorPage"
+  ]
 }

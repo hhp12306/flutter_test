@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>商品详情</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #f5f5f5; }
+    .banner { background: linear-gradient(135deg, #FF6B00, #FF9500); height: 180px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 48px; }
+    .content { padding: 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    .price { color: #FF6B00; font-size: 24px; font-weight: bold; }
+    .desc { color: #666; font-size: 14px; line-height: 1.6; }
+    button { width: 100%; padding: 14px; background: #FF6B00; color: #fff; border: none; border-radius: 8px; font-size: 16px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="banner">🛍</div>
+  <div class="content">
+    <div class="card">
+      <h1>智能行车记录仪</h1>
+      <p class="price">¥299</p>
+      <p class="desc">4K超清录制，F1.8大光圈，支持夜视增强、循环录像、停车监控。专为 HarmonyOS 车主打造。</p>
+    </div>
+    <div class="card">
+      <p class="desc">这是商城二级 H5 页面，由 DIWeb 加载。点击按钮可调用原生 Bridge。</p>
+      <button onclick="callNative()">调用原生 Toast</button>
+    </div>
+  </div>
+  <script>
+    function callNative() {
+      if (window.DIWeb) {
+        DIWeb.call('toast', { message: '来自商城 H5 的问候！' });
+      } else {
+        alert('Bridge 未就绪');
+      }
+    }
+  </script>
+</body>
+</html>
