@@ -1,4 +1,4 @@
-import { DIWebRouter } from '../../diweb/DIWebRouter'
+import { CoreUtils, WebNavigateParams } from '../../common/core/components/utils/CoreUtils'
 import { DIWebH5Path } from '../../diweb/DIWebRawfile'
 import { DIWebLog, DIWebLogTag } from '../../diweb/DIWebLog'
 import { TabMenuItem, TabMenuItemData } from './TabMenuItem'
@@ -55,7 +55,14 @@ export struct CarTab {
             onTap: (data: TabMenuItemData) => {
               DIWebLog.infoT(DIWebLogTag.ROUTER, 'CarTab click title=%{public}s url=%{public}s',
                 data.h5Title, data.h5Url)
-              DIWebRouter.open(data.h5Url, { title: data.h5Title, source: '爱车' })
+              const navParams: WebNavigateParams = {
+                url: data.h5Url,
+                title: data.h5Title,
+                source: '爱车',
+                scene: 'service',
+                bridgeProfile: 'community'
+              }
+              CoreUtils.navigateToWebview(navParams)
             }
           })
         }, (item: TabMenuItemData, index: number) => `${item.title}_${index}`)

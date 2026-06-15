@@ -1,6 +1,7 @@
 import { DIWeb } from './DIWeb'
 import { DIWebController } from './DIWebController'
-import { DIWebRouteParams, DIWebRouter } from './DIWebRouter'
+import { DIWebRouteParams } from './DIWebRouter'
+import { RouterManager } from '../common/core/router/RouterManager'
 import { DIWebSession, DIWEB_OVERLAY_VISIBLE_KEY } from './DIWebSession'
 import { DIWebLog, DIWebLogTag } from './DIWebLog'
 import { DIWebLoadMonitor } from './DIWebLoadMonitor'
@@ -119,7 +120,7 @@ export struct DIWebOverlay {
       'handleBack closeOverlay url=%{public}s webUrl=%{public}s webCanGoBack=%{public}s',
       this.url || '(empty)', webUrl || '(empty)', String(this.webCtrl?.canGoBack() ?? false))
     // Overlay 模式：直接关闭容器，不走 Web 内后退（避免退到 about:blank 占位页）
-    DIWebRouter.back()
+    RouterManager.back()
   }
 
   build() {
@@ -169,8 +170,8 @@ export struct DIWebOverlay {
                 }
               },
               onClose: () => {
-                DIWebLog.infoT(DIWebLogTag.OVERLAY, 'bridge close -> DIWebRouter.back')
-                DIWebRouter.back()
+                DIWebLog.infoT(DIWebLogTag.OVERLAY, 'bridge close -> RouterManager.back')
+                RouterManager.back()
               }
             })
           },

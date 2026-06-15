@@ -22,6 +22,8 @@ export class DIWebLogTag {
   static readonly CHANNEL: string = 'DIWeb-Channel'
   /** 测试 Tab 操作 */
   static readonly TEST: string = 'DIWeb-Test'
+  /** 端到端链路验证（tag=DIWeb-E2E） */
+  static readonly E2E: string = 'DIWeb-E2E'
 }
 
 /** 导航链路追踪：一次 open 对应一个 navId，便于排查「跳两层」 */

@@ -1,146 +1,141 @@
 ---
-name: harmony-flutter-diweb
+name: harmony-flutter-diweb-optimization
 description: >-
-  HarmonyOS + Flutter 混合 App 中 DIWeb H5 容器优化方案（单 WebView Overlay、预热、Bridge 按需注入、加载监控、稳定性修复）。
-  用于对照公司项目做架构比对、迁移评估、性能排查，或用户提到 Harmony Flutter H5、WebView 预热、JSBridge、Overlay 秒开时。
+  HarmonyFlutterMix Demo — Flutter跳转H5性能优化参考方案。单WebView Overlay常驻、预热、Bridge分档、加载监控、稳定性修复。
+  用于与公司 dilink 项目做架构比对、迁移评估、性能排查，或用户提到 Harmony Flutter H5、WebView预热、JSBridge、Overlay秒开时。
+type: project
 ---
 
-# Harmony Flutter DIWeb 优化方案
+# HarmonyFlutterMix — Flutter跳转H5性能优化
 
 ## 何时使用
 
-用户要把 Demo 方案迁移到公司项目，或让 AI **读取后对照现有实现**时：
+用户要把 Demo 方案迁移到公司项目，或让 AI **对照现有实现做深度分析**时：
 
-1. 先读 [reference.md](reference.md) 全文
-2. 按「比对清单」逐项检查公司代码
-3. 输出差异表：已有 / 缺失 / 需改造 / 不适用
+1. 先读完整文档：[harmony-flutter-diweb-optimization-analysis.md](harmony-flutter-diweb-optimization-analysis.md)
+2. 按「架构比对清单」逐项检查目标项目代码
+3. 输出差异表：已有优化 / 缺失优化 / 需改造 / 不适用
+4. 按优先级给出迁移或继续优化建议
 
 ## 业务前提（比对前先确认）
 
-| 约定 | Demo 假设 |
+| 约定 | Demo 现状 |
 |------|-----------|
 | 发现 Tab | 嵌入 Flutter 社区首页 |
 | 二级页 | 远程 H5，Flutter 经 MethodChannel 传 URL |
 | 返回 | **直接关 Overlay 回 Flutter**，不走 Web 内后退 |
 | URL | 帖子/详情 URL **各不相同** |
-| WebView | **全 App 共用一个**（Index 层常驻） |
+| WebView | **全 App 共用一个**（Index 层 `DIWebOverlay` 常驻） |
 | 关 H5 后 | Flutter **不需要刷新** |
+| multi 后退 | **不支持**（与 dilink `multi=true` 不同） |
 
-若公司项目前提不同，部分优化（如缓存秒开、单 WebView）可能不适用。
+**与公司项目关系**：
 
-## 核心架构（5 层）
+- **默认路径**：与公司一致 `router.push WebPageBridge`，每页独立 Controller + WebViewPool
+- **优化路径**：`useOverlay=true` 时走 `DIWebOverlay` 单 WebView（Demo 方案，可 A/B 对比）
+
+## 核心架构（公司镜像 7 层，默认）
 
 ```
 Flutter openH5
-  → DIWebChannelPlugin (MethodChannel)
-  → DIWebRouter.open (默认 useOverlay=true)
-  → DIWebSession.openInOverlay (AppStorage 显隐)
-  → DIWebOverlay (常驻，Visibility.Hidden 不销毁)
-  → DIWeb + DIWebController (共享 WebviewController)
+  → NavigateService.toWebview
+  → CoreUtils.navigateToWebview（场景 flag 判断）
+  → RouterManager.routerToWebPageBridge
+  → DiNavigation.build(WebPageBridge).navigation()
+  → WebPageBridge（JsBridgeApi + ActionJsApi + WebViewPool）
+  → WebContainer → DIWeb
 ```
+
+**Overlay 优化路径**：`useOverlay=true` → `DIWebSession.openInOverlay` → `DIWebOverlay`
 
 **关键文件**（相对 `entry/src/main/ets/`）：
 
-| 模块 | 文件 |
-|------|------|
-| 入口 | `pages/Index.ets`（`DIWebOverlay()` 常驻 + `BarMode.Fixed`） |
-| Overlay | `diweb/DIWebOverlay.ets` |
-| 会话 | `diweb/DIWebSession.ets` |
-| 路由 | `diweb/DIWebRouter.ets` |
-| Web 组件 | `diweb/DIWeb.ets` |
-| Bridge | `diweb/DIWebBridgeScript.ets` |
-| Flutter 通道 | `plugins/DIWebChannelPlugin.ets` |
-| 预热触发 | `pages/tabs/DiscoverTab.ets` |
-| 监控 | `diweb/DIWebLoadMonitor.ets` |
+| 模块 | 文件 | 对齐公司 |
+|------|------|---------|
+| Flutter 入口 | `service/flutter_bridge/services/NavigateService.ets` | NavigateService |
+| 场景路由 | `common/core/components/utils/CoreUtils.ets` | CoreUtils |
+| 路由 | `common/core/router/RouterManager.ets` | RouterManager |
+| H5 页面 | `common/core/components/page/WebPageBridge.ets` | WebPageBridge |
+| Web 容器 | `common/core/components/web/WebContainer.ets` | WebContainer |
+| Bridge | `common/core/components/web/JsBridgeApi.ets` | JsBridgeApi |
+| 预热池 | `common/core/components/web/WebViewPool.ets` | WebViewPool |
+| 引擎层 | `diweb/*` | DiWeb 底层 |
+| Overlay 优化 | `diweb/DIWebOverlay.ets` | Demo 独有 |
 
-## 七大优化点（比对重点）
+## 已实施优化（Demo 现状）
 
-### 1. Index 层常驻 Overlay 单 WebView
+| 优化项 | 状态 | 实测收益 |
+|--------|------|---------|
+| Index Overlay 单 WebView | ✅ 已实施 | Overlay ~0–1ms |
+| WebView 预热 | ✅ 发现 Tab | 本地首开 ~55ms |
+| Bridge 分档 community/full | ✅ 已实施 | community ~6–11ms |
+| URL 切换遮罩 pendingNavigation | ✅ 已实施 | 无旧页闪烁 |
+| 子资源错误过滤 | ✅ 已实施 | 避免误报失败 |
+| 加载监控 DIWebLoadMonitor | ✅ 已实施 | HiLog `#N REPORT` |
+| 同 URL 缓存秒开 | ✅ 已实施 | ~5ms |
+| 错误 UI Stack 浮层 | ✅ 已实施 | 重试不 detach Web |
 
-- `DIWebOverlay` 用 `Visibility.Hidden` 隐藏，**不销毁** Web 组件
-- `DIWebSession.sharedController` 全局复用 `WebviewController`
-- Web 初始 `src='about:blank'`，避免 demo 页进历史栈
-- 返回：`DIWebRouter.back()` → `closeOverlay()`，**不调用** `web.goBack()`
+## Demo 仍可优化项（对照公司文档后的差距）
 
-### 2. WebView 预热
+| 优化项 | 现状问题 | 建议 | 优先级 |
+|--------|---------|------|--------|
+| 默认 Bridge 档位 | `DIWebRouter` 默认 `full`；商城/爱车/服务未传 profile | 默认改 `community`，各 Tab 按场景传档 | P1 |
+| 预热时机 | 仅 `DiscoverTab` 激活时预热 | `Index.aboutToAppear` 提前预热，覆盖非发现 Tab 入口 | P1 |
+| Bridge 档位扩展 | 仅 community/full | 增加 `mall`/`service` 档（对齐公司方案） | P2 |
+| 远程 HTML | 占可见耗时 95%+ | H5 骨架屏/CDN/SSR，原生无法单独解决 | P2 |
+| 测试 Tab | 上线暴露调试入口 | 移入「我的」或移除 | P2 |
+| DIWebPage fallback | `useOverlay=false` 仍走 router | 保留作调试，生产路径只用 Overlay | P3 |
 
-- 进入发现 Tab 时 `DIWebSession.prewarmWeb('社区Tab')`
-- 仅 `onActive()` 唤醒引擎；Overlay 内 Web 已 attach 在 `about:blank`
-- 效果：省 WebView 冷启动（约几十～百 ms），**不能**缩短远程 HTML 网络时间
+## 性能对比（Demo 实测 vs 公司预估）
 
-### 3. Bridge 按需注入（community / full）
+| 指标 | Demo 实测 | 公司项目预估 | Demo 优势 |
+|------|----------|-------------|----------|
+| WebView 冷启动 | ~55ms（预热后首开） | 150–250ms | Overlay 常驻 |
+| Bridge 注入 | 6–11ms (community) | 30–60ms (90+ API) | 分档注入 |
+| 路由/显隐 | ~1ms (Overlay) | 35–60ms (push) | 无路由栈 |
+| 远程 HTML | 300–800ms+ | 300–800ms+ | 相同瓶颈 |
+| **原生总开销** | **~8–60ms** | **215–370ms** | **约 3–5 倍** |
 
-- `community`：4 API（getAppInfo/close/setTitle/toast），约 1.6KB
-- `full`：93 API 压测档，约 10.5KB
-- Flutter `openH5` 默认 `bridgeProfile: 'community'`
-- 同 URL 切换 Bridge 档位：`forceReloadTick++` 强制重载
-
-### 4. URL 切换遮罩（pendingNavigation）
-
-- 换 URL 时 `pendingNavigation=true`，Web `opacity=0` + 全屏 Loading
-- `onPageEnd` 后 `clearPendingNavigation` → `markOverlayContentVisible`
-- 避免旧页闪烁
-
-### 5. 子资源错误不误报整页失败
-
-`DIWeb.handleWebError` 忽略：
-
-- `code === -32`（ERR_BLOCKED_BY_ORB）
-- 主文档已加载完成（`!isLoading && loadedUrl` 非空）
-- 失败 URL 与主文档 URL 不一致（埋点/子资源）
-
-**错误 UI 必须是 Stack 浮层**，不能条件卸载 Web 组件（否则重试报 `WebviewController must be associated with a Web component`）。
-
-### 6. 加载监控（可移植）
-
-- `DIWebLoadMonitor`：CLICK → overlayVisible → pageBegin → pageEnd → bridgeInject → contentVisible
-- 四种 `loadMode`：首次加载 / 切换加载 / 同URL重载 / 缓存秒开
-- HiLog tag `DIWeb/MONITOR`，搜 `#N REPORT` 看汇总
-- **注意**：HiLog 数值用 `%{public}s` + `String()`，不要用 `%d`
-
-### 7. Flutter MethodChannel 对接
-
-```dart
-// channel: com.example.harmonyfluttermix/diweb
-await channel.invokeMethod('openH5', {
-  'url': url,
-  'title': title,
-  'bridgeProfile': 'community', // 可选，默认 community
-});
-```
-
-## 比对输出模板
-
-对照公司项目后，按此格式回复：
+## 与公司项目比对输出模板
 
 ```markdown
 ## 架构比对
-| 项 | Demo | 公司项目 | 建议 |
-|----|------|----------|------|
+| 项 | Demo (DIWeb) | 公司 (dilink) | 建议 |
 
 ## 性能预期
-| 场景 | Demo 实测 | 公司现状 | 差距原因 |
+| 场景 | Demo 实测 | 公司现状 | 迁移收益 |
 
 ## 迁移优先级
-1. P0（稳定性/阻塞上线）
-2. P1（性能体感）
-3. P2（可观测性）
+- P0：稳定性（错误过滤、Web 不 detach）
+- P1：预热池/单 WebView、Bridge 分档、URL 遮罩
+- P2：Overlay 混合方案（仅 multi=false 场景）
+- P3：全量 Overlay 重构
 
 ## 不适用项
-（业务前提不同导致的）
+（multi=true、特殊场景路由等）
 ```
 
-## 实测基准（Demo 模拟器，预热=true）
+## 实施路线图（公司侧参考）
 
-| 场景 | loadMode | 可见耗时 |
-|------|----------|----------|
-| 本地 Demo 首开 | 首次加载 | ~55ms |
-| 同 URL 再开 | 缓存秒开 | ~5ms |
-| 同 URL 换 Bridge | 同URL重载 | ~35ms |
-| 远程百度 | 切换加载 | ~547ms（HTML ~546ms，原生 ~8ms） |
+**Week 1 (P1)**：WebView 预热池 + Bridge 分档 + URL 遮罩 + 移植 DIWebLoadMonitor  
+**Week 2**：真机 3–5 个真实 H5 URL + Bridge API 清单梳理  
+**Week 3 (可选)**：multi=false 场景 Overlay 混合方案
 
-**上线判断**：原生链路 ms 级可接受；远程帖子首开 300–800ms 正常；不能指望每个不同 URL 都 5ms 秒开。
+## 关键代码索引
+
+| 行为 | 文件 | 位置 |
+|------|------|------|
+| Overlay 常驻 | Index.ets | `DIWebOverlay()` + zIndex |
+| Flutter 入口 | DIWebChannelPlugin.ets | `openH5` case |
+| 打开 H5 | DIWebRouter.ets | `open()` |
+| 关闭 H5 | DIWebRouter.ets | `back()` → `closeOverlay()` |
+| 预热 | DIWebSession.ets | `prewarmWeb()` |
+| 遮罩 | DIWebOverlay.ets | `pendingNavigation` |
+| Bridge 注入 | DIWeb.ets | `onPageEnd` → `injectBridgeScript` |
+| 错误过滤 | DIWeb.ets | `shouldIgnoreWebError()` |
+| 监控 REPORT | DIWebLoadMonitor.ets | `logReport()` |
 
 ## 详细文档
 
-完整设计、代码片段、反模式、上线检查项见 [reference.md](reference.md)。
+完整架构剖析、WebView 层级、瓶颈诊断、分阶段方案、FAQ 见：  
+[harmony-flutter-diweb-optimization-analysis.md](harmony-flutter-diweb-optimization-analysis.md)

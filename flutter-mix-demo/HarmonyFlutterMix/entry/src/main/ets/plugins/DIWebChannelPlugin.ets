@@ -1,4 +1,3 @@
-import router from '@ohos.router'
 import {
   FlutterPlugin,
   FlutterPluginBinding,
@@ -6,15 +5,16 @@ import {
   MethodCall,
   MethodResult
 } from '@ohos/flutter_ohos'
-import { DIWebRouter } from '../diweb/DIWebRouter'
+import { NavigateService } from '../service/flutter_bridge/services/NavigateService'
+import { WebNavigateParams } from '../common/core/components/utils/CoreUtils'
 import { DIWebSession } from '../diweb/DIWebSession'
-import { DIWebBridgeProfile } from '../diweb/DIWebTypes'
 import { DIWebLog, DIWebLogTag } from '../diweb/DIWebLog'
+import router from '@ohos.router'
 
 const CHANNEL_NAME: string = 'com.example.harmonyfluttermix/diweb'
 
 /**
- * Flutter ↔ 原生 DIWeb 通信通道
+ * Flutter ↔ 原生桥接插件（委托 NavigateService，对齐公司 dilink_flutter_plugin_channel）
  */
 export class DIWebChannelPlugin implements FlutterPlugin {
   private channel: MethodChannel | null = null
@@ -34,7 +34,6 @@ export class DIWebChannelPlugin implements FlutterPlugin {
   }
 
   onDetachedFromEngine(_binding: FlutterPluginBinding): void {
-    DIWebLog.infoT(DIWebLogTag.CHANNEL, 'onDetachedFromEngine')
     if (this.channel) {
       this.channel.setMethodCallHandler(null)
       this.channel = null
@@ -49,37 +48,35 @@ export class DIWebChannelPlugin implements FlutterPlugin {
 
     switch (call.method) {
       case 'openTestPage':
-        DIWebLog.infoT(DIWebLogTag.CHANNEL, 'openTestPage -> pages/DIWebTestPage')
         router.pushUrl({ url: 'pages/DIWebTestPage' })
-          .then(() => {
-            DIWebLog.infoT(DIWebLogTag.CHANNEL, 'openTestPage success')
-            result.success(true)
-          })
-          .catch((err: Error) => {
-            DIWebLog.errorT(DIWebLogTag.CHANNEL, 'openTestPage failed: %{public}s', err.message ?? String(err))
-            result.error('ROUTER_ERROR', err.message, null)
-          })
+          .then(() => result.success(true))
+          .catch((err: Error) => result.error('ROUTER_ERROR', err.message, null))
         break
       case 'openH5': {
-        const url = call.argument('url') as string
-        const title = call.argument('title') as string
-        const profileArg = call.argument('bridgeProfile') as string
-        const bridgeProfile: DIWebBridgeProfile = profileArg === 'full' ? 'full' : 'community'
-        DIWebLog.infoT(DIWebLogTag.CHANNEL,
-          'openH5 url=%{public}s title=%{public}s bridge=%{public}s prewarm=%{public}s prewarmSource=%{public}s',
-          url ?? '', title ?? '', bridgeProfile, String(session.isPrewarmed()), session.getPrewarmSource() || '-')
-        if (!url) {
-          DIWebLog.errorT(DIWebLogTag.CHANNEL, 'openH5 url is empty')
+        const args = (call.args ?? {}) as Record<string, Object>
+        if (!args['url']) {
           result.error('INVALID_ARGS', 'url is required', null)
           return
         }
-        DIWebRouter.open(url, { title: title ?? '', source: 'Flutter社区', bridgeProfile: bridgeProfile })
-        DIWebLog.infoT(DIWebLogTag.CHANNEL, 'openH5 dispatched ok')
-        result.success(true)
+        const navParams: WebNavigateParams = {
+          url: String(args['url']),
+          title: String(args['title'] ?? ''),
+          scene: String(args['scene'] ?? 'community'),
+          source: String(args['source'] ?? 'Flutter社区'),
+          showNavigation: args['showNavigation'] !== false
+        }
+        if (args['bridgeProfile'] !== undefined && args['bridgeProfile'] !== null) {
+          navParams.bridgeProfile = String(args['bridgeProfile'])
+        }
+        if (args['useOverlay'] === true) {
+          navParams.useOverlay = true
+        }
+        NavigateService.getInstance().toWebviewFromRecord(navParams,
+          () => result.success(true),
+          (msg: string) => result.error('NAVIGATE_ERROR', msg, null))
         break
       }
       default:
-        DIWebLog.warnT(DIWebLogTag.CHANNEL, 'notImplemented method=%{public}s', call.method)
         result.notImplemented()
     }
   }

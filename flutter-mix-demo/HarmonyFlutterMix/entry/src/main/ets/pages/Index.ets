@@ -7,9 +7,11 @@ import { ServiceTab } from './tabs/ServiceTab'
 import { MineTab } from './tabs/MineTab'
 import { TestTab } from './tabs/TestTab'
 import { DIWebOverlay } from '../diweb/DIWebOverlay'
-import { DIWebRouter } from '../diweb/DIWebRouter'
+import { RouterManager } from '../common/core/router/RouterManager'
+import { WebViewPool } from '../common/core/components/web/WebViewPool'
 import { DIWebSession, DIWEB_OVERLAY_VISIBLE_KEY } from '../diweb/DIWebSession'
 import { DIWebLog, DIWebLogTag } from '../diweb/DIWebLog'
+import { WebFlowTracer } from '../common/core/utils/WebFlowTracer'
 
 const EVENT_BACK_PRESS = 'EVENT_BACK_PRESS'
 
@@ -22,6 +24,9 @@ struct Index {
 
   aboutToAppear(): void {
     DIWebSession.initOverlayStorage()
+    WebViewPool.getInstance().prewarm(2)
+    DIWebLog.infoT(DIWebLogTag.INDEX, 'Index aboutToAppear WebViewPool prewarm(2)')
+    WebFlowTracer.step('Index', `App启动 WebViewPool=${WebViewPool.getInstance().getPoolSize()}`)
   }
 
   build() {
@@ -108,7 +113,7 @@ struct Index {
       String(this.overlayVisible), String(this.currentIndex))
     if (DIWebSession.getInstance().isOverlayVisible()) {
       DIWebLog.infoT(DIWebLogTag.INDEX, 'onBackPress close overlay directly')
-      DIWebRouter.back()
+      RouterManager.back()
       return true
     }
     if (this.currentIndex === 0) {

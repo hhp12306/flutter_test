@@ -1,4 +1,4 @@
-import { DIWebRouter } from '../../diweb/DIWebRouter'
+import { CoreUtils, WebNavigateParams } from '../../common/core/components/utils/CoreUtils'
 import { DIWebH5Path } from '../../diweb/DIWebRawfile'
 import { DIWebLog, DIWebLogTag } from '../../diweb/DIWebLog'
 import { TabMenuItem, TabMenuItemData } from './TabMenuItem'
@@ -36,7 +36,14 @@ export struct ServiceTab {
             onTap: (data: TabMenuItemData) => {
               DIWebLog.infoT(DIWebLogTag.ROUTER, 'ServiceTab click title=%{public}s url=%{public}s',
                 data.h5Title, data.h5Url)
-              DIWebRouter.open(data.h5Url, { title: data.h5Title, source: '服务' })
+              const navParams: WebNavigateParams = {
+                url: data.h5Url,
+                title: data.h5Title,
+                source: '服务',
+                scene: 'service',
+                bridgeProfile: 'service'
+              }
+              CoreUtils.navigateToWebview(navParams)
             }
           })
         }, (item: TabMenuItemData, index: number) => `${item.title}_${index}`)

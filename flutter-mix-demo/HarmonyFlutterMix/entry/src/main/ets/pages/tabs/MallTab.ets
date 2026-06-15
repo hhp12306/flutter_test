@@ -1,4 +1,4 @@
-import { DIWebRouter } from '../../diweb/DIWebRouter'
+import { CoreUtils, WebNavigateParams } from '../../common/core/components/utils/CoreUtils'
 import { DIWebH5Path } from '../../diweb/DIWebRawfile'
 import { DIWebLog, DIWebLogTag } from '../../diweb/DIWebLog'
 
@@ -73,7 +73,14 @@ export struct MallTab {
             .onClick(() => {
               DIWebLog.infoT(DIWebLogTag.ROUTER, 'MallTab click product=%{public}s url=%{public}s',
                 product.name, DIWebH5Path.MALL_DETAIL)
-              DIWebRouter.open(DIWebH5Path.MALL_DETAIL, { title: product.name, source: '商城' })
+              const navParams: WebNavigateParams = {
+                url: DIWebH5Path.MALL_DETAIL,
+                title: product.name,
+                source: '商城',
+                scene: 'mall',
+                bridgeProfile: 'mall'
+              }
+              CoreUtils.navigateToWebview(navParams)
             })
           }, (product: MallProduct) => product.id)
         }

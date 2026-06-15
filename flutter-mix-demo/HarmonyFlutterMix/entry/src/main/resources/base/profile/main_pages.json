@@ -2,6 +2,7 @@
   "src": [
     "pages/Index",
     "pages/DIWebPage",
+    "pages/DIWebTestPage",
     "pages/mine/MineSubPage",
     "pages/mine/WebLoadMonitorPage"
   ]

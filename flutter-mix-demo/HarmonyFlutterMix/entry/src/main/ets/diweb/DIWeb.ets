@@ -8,6 +8,10 @@ import { DIWebSession } from './DIWebSession'
 /** Web 占位 src：避免默认 demo.html 写入历史栈导致返回多一层 */
 const DIWEB_BLANK_SRC: string = 'about:blank'
 
+function isBlankPageUrl(url: string): boolean {
+  return url.length === 0 || url.includes('about:blank')
+}
+
 /**
  * DIWeb 组件：封装 HarmonyOS Web 组件，内置 JSBridge
  */
@@ -16,6 +20,7 @@ export struct DIWeb {
   @Prop @Watch('onUrlChanged') url: string = DIWEB_LOCAL_DEMO_URL
   @Prop showProgress: boolean = true
   @Prop useSharedController: boolean = true
+  @Prop externalController: DIWebController | null = null
   @Prop @Watch('onHostVisibleChanged') hostVisible: boolean = true
   @Prop @Watch('onForceReloadTickChanged') forceReloadTick: number = 0
   @Prop bridgeProfile: DIWebBridgeProfile = 'full'
@@ -35,11 +40,19 @@ export struct DIWeb {
   private loadedUrl: string = ''
   private controllerReady: boolean = false
   private pendingLoadTrigger: string = ''
+  /** about:blank 占位页是否已完成（用于 attach 与 blank 完成竞态） */
+  private blankPlaceholderDone: boolean = false
+  /** 目标 URL 是否已成功 onPageEnd */
+  private targetPageLoaded: boolean = false
 
   aboutToAppear(): void {
-    this.webCtrl = this.useSharedController
-      ? DIWebSession.getInstance().getSharedController()
-      : this.ownedController
+    if (this.externalController !== null) {
+      this.webCtrl = this.externalController
+    } else {
+      this.webCtrl = this.useSharedController
+        ? DIWebSession.getInstance().getSharedController()
+        : this.ownedController
+    }
     DIWebLog.infoT(DIWebLogTag.VIEW,
       'aboutToAppear url=%{public}s bridge=%{public}s shared=%{public}s loadedUrl=%{public}s',
       this.url || '(empty)', this.bridgeProfile, String(this.useSharedController), this.loadedUrl || '(empty)')
@@ -60,6 +73,8 @@ export struct DIWeb {
     DIWebLog.infoT(DIWebLogTag.VIEW, 'onUrlChanged url=%{public}s ready=%{public}s loadedUrl=%{public}s hostVisible=%{public}s',
       this.url || '(empty)', String(this.controllerReady), this.loadedUrl || '(empty)', String(this.hostVisible))
     if (this.controllerReady) {
+      this.targetPageLoaded = false
+      this.blankPlaceholderDone = false
       this.loadedUrl = ''
       this.isLoading = true
       this.loadTargetUrl(this.url, 'onUrlChanged')
@@ -85,6 +100,8 @@ export struct DIWeb {
     DIWebLog.infoT(DIWebLogTag.VIEW,
       'onForceReloadTickChanged tick=%{public}d url=%{public}s loadedUrl=%{public}s',
       String(this.forceReloadTick), this.url || '(empty)', this.loadedUrl || '(empty)')
+    this.targetPageLoaded = false
+    this.blankPlaceholderDone = false
     this.loadedUrl = ''
     this.isLoading = true
     this.loadTargetUrl(this.url, 'forceReload')
@@ -161,7 +178,7 @@ export struct DIWeb {
             this.controllerReady = true
             if (this.url && this.url.length > 0) {
               this.isLoading = true
-              this.loadTargetUrl(this.url, 'onControllerAttached')
+              this.scheduleInitialLoad('onControllerAttached')
             } else {
               this.isLoading = false
             }
@@ -188,14 +205,25 @@ export struct DIWeb {
           })
           .onPageEnd((event) => {
             const pageUrl = event?.url ?? 'unknown'
-            if (pageUrl.includes('about:blank')) {
-              this.loadedUrl = ''
-              DIWebLog.infoT(DIWebLogTag.VIEW, 'onPageEnd blank page -> clear loadedUrl')
+            if (isBlankPageUrl(pageUrl)) {
+              if (this.targetPageLoaded) {
+                DIWebLog.infoT(DIWebLogTag.VIEW, 'onPageEnd blank SKIP: target already loaded')
+              } else {
+                this.blankPlaceholderDone = true
+                this.loadedUrl = ''
+                DIWebLog.infoT(DIWebLogTag.VIEW, 'onPageEnd blank page -> placeholder done')
+                if (this.controllerReady && this.url.length > 0) {
+                  DIWebLog.infoT(DIWebLogTag.VIEW,
+                    'onPageEnd blank -> loadTargetUrl url=%{public}s', this.url)
+                  this.loadTargetUrl(this.url, 'afterBlankReady')
+                }
+              }
             }
             DIWebLog.infoT(DIWebLogTag.VIEW,
               'onPageEnd url=%{public}s bridge=%{public}s canGoBack=%{public}s loadedUrl=%{public}s',
               pageUrl, this.bridgeProfile, String(this.webCtrl.canGoBack()), this.loadedUrl || '(empty)')
-            if (!pageUrl.includes('about:blank')) {
+            if (!isBlankPageUrl(pageUrl)) {
+              this.targetPageLoaded = true
               DIWebLoadMonitor.markPageEnd(pageUrl)
               this.isLoading = false
               DIWebLog.infoT(DIWebLogTag.BRIDGE,
@@ -338,6 +366,19 @@ export struct DIWeb {
       return true
     }
     return a.endsWith(b) || b.endsWith(a)
+  }
+
+  /** 首次加载：等 blank 占位完成后再 loadUrl，避免与 onControllerAttached 双发 */
+  private scheduleInitialLoad(trigger: string): void {
+    if (!this.controllerReady || this.url.length === 0 || this.targetPageLoaded) {
+      return
+    }
+    if (this.blankPlaceholderDone || !this.webCtrl.isOnBlankPage()) {
+      this.loadTargetUrl(this.url, trigger)
+      return
+    }
+    DIWebLog.infoT(DIWebLogTag.VIEW,
+      'scheduleInitialLoad wait blank placeholder trigger=%{public}s', trigger)
   }
 
   private loadTargetUrl(url: string, trigger: string): void {

@@ -18,7 +18,7 @@ export interface DIWebPageOptions {
   showProgress?: boolean
   /** 调用来源，用于 Web 加载监控 */
   source?: string
-  /** 是否使用 Index 常驻 Overlay，默认 true；独立测试页请设 false */
+  /** 是否使用 Index 常驻 Overlay；默认 false=公司路由 WebPageBridge */
   useOverlay?: boolean
   /** Bridge 注入档位，社区 H5 建议 community */
   bridgeProfile?: DIWebBridgeProfile

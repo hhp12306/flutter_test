@@ -34,7 +34,7 @@ struct DIWebTestPage {
     this.testCases = [
       {
         title: '本地 Demo 页（二级页打开）',
-        desc: '通过 DIWebPage 打开本地 H5',
+        desc: '通过 WebPageBridge 公司路由打开',
         action: () => {
           DIWebRouter.open(DIWEB_LOCAL_DEMO_URL, { title: '本地 Demo', useOverlay: false })
         }
