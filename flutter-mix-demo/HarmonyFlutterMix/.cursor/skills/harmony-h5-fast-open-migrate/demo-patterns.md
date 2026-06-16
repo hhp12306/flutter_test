@@ -135,8 +135,8 @@ Flutter openH5 (useOverlay=true)
 
 | 时机 | Demo | 建议公司 |
 |------|------|---------|
-| App 启动 | `Index` prewarm WebViewPool(2) | 同上 |
-| 发现 Tab 显示 | `prewarmWeb('DiscoverTab')` | 社区 Tab onShown |
+| App 启动 | `EntryAbility` initializeWebEngine + preconnect；`Index` prewarm WebViewPool(2) | 同上 |
+| 发现 Tab 显示 | `prewarmWeb` → preconnect + onActive | 社区 Tab onShown |
 | Overlay Host | `DIWebOverlay.aboutToAppear` bind | Index build 即挂载 |
 
 ---
@@ -153,11 +153,17 @@ WebFlowTracer.end('✅ 公司路由链路成功')
 
 HiLog：`hilog | grep DIWeb-E2E`
 
-### DIWebLoadMonitor（分段耗时）
+### DIWebLoadMonitor（分段耗时 + 内存）
 
-关键字段：`clickToBeginMs`, `pageLoadMs`, `bridgeInjectMs`, `displayReadyMs`
+关键字段：`clickToBeginMs`, `pageLoadMs`, `pageRenderMs`, `bridgeInjectMs`, `displayReadyMs`,
+`memoryPssKbClick`, `memoryPssKbEnd`, `memoryPssDeltaKb`, `webViewPoolSize`
 
 HiLog：`hilog | grep DIWeb-Monitor`
+
+```
+#1 REPORT 耗时 | 可见=480ms HTML=474ms 渲染=206ms ...
+#1 REPORT 内存 | 点击PSS=180.5 MB 完成PSS=192.3 MB Δ=+11.8 MB pool=2
+```
 
 ---
 
@@ -173,7 +179,74 @@ HiLog：`hilog | grep DIWeb-Monitor`
 
 ---
 
-## §9 公司迁移时不要照搬
+## §9 官方 Web 引擎预连接（P1）
+
+```typescript
+// WebEnginePrewarm.ets
+import { webview } from '@kit.ArkWeb'
+
+// App 启动一次
+webview.WebviewController.initializeWebEngine()
+
+// 预连接：URL 去掉 # 前端路由，仅 origin+path
+const entryUrl = url.split('#')[0]
+webview.WebviewController.prepareForPageLoad(entryUrl, true, 2)  // sockets 1-6
+```
+
+**调用时机**：
+
+| 时机 | Demo | 公司建议 |
+|------|------|---------|
+| App 启动 | `EntryAbility.onCreate` | 同上 |
+| 社区 Tab 显示 | `DIWebSession.prewarmWeb` | 发现 Tab onShown |
+
+**注意**：
+
+- 只做 DNS + Socket，**不下载 HTML/JS**
+- 与 WebViewPool **叠加**，不替代
+- 同一 URL 建议 30s 冷却，避免频繁调用
+- 公司生产环境将 `H5TestUrls.UAT_BASE` 换成真实社区 H5 入口
+
+**HiLog 验收**：`hilog | grep DIWeb-Prewarm`
+
+```
+initializeWebEngine OK source=EntryAbility
+preconnect OK url=https://common-cache-h5-uat.../index.html sockets=2
+prefetchPage called ok trigger=社区Tab url=...pid=2406463
+```
+
+---
+
+## §11 prefetchPage 页面预取（P1）
+
+与 `prepareForPageLoad` 对比：
+
+| API | 层级 | 需要 attach Web | 作用 |
+|-----|------|----------------|------|
+| `prepareForPageLoad` | 静态 | 否 | 仅 DNS + Socket |
+| `prefetchPage` | 实例方法 | **是** | 下载主/子资源，不执行 JS，缓存约 5 分钟 |
+
+```typescript
+// 必须在已绑定 Web 组件的 Controller 上调用
+this.webviewController.prefetchPage(
+  'https://common-cache-h5-dev.bydauto.com/mpaas/.../index.html#/pages/community/imgDetail/index?type=2&pid=24847'
+)
+```
+
+**Demo 调用时机**：
+
+| 时机 | 来源 |
+|------|------|
+| Overlay blank 完成后 | `DIWeb.ets` `overlayBlankReady` |
+| 发现 Tab prewarmWeb | `DIWebSession.prewarmWeb` |
+
+**公司迁移**：在 WebPageBridge 的 Web `onPageEnd`（非 blank）时，对预测的下一跳 URL 调用 `prefetchPage`；或由 Flutter 列表曝光时传入 URL。
+
+默认预取 URL：`H5TestUrls.PREFETCH_POST_URL`（公司改为 dev 域名即可）。
+
+---
+
+## §10 公司迁移时不要照搬
 
 | Demo 行为 | 公司可能不同 |
 |-----------|-------------|
@@ -181,3 +254,43 @@ HiLog：`hilog | grep DIWeb-Monitor`
 | Overlay 为优化主路径 | 公司主路径仍是 push 多层 |
 | DIWebPage 不用 WebViewPool | 公司应对 WebPageBridge 接 acquire/release |
 | TestTab 调试入口 | 生产隐藏 |
+
+---
+
+## §12 内存监控（P1，2026-06 新增）
+
+### DIWebMemoryMonitor.ets
+
+```typescript
+import { hidebug } from '@kit.PerformanceAnalysisKit'
+import { taskpool } from '@kit.ArkTS'
+
+@Concurrent
+function readMemorySnapshotTask(): MemoryTaskResult {
+  return {
+    pssKb: Number(hidebug.getPss()),
+    privateDirtyKb: Number(hidebug.getPrivateDirty()),
+    sharedDirtyKb: Number(hidebug.getSharedDirty()),
+    nativeHeapKb: Math.round(Number(hidebug.getNativeHeapAllocatedSize()) / 1024),
+    timestamp: Date.now()
+  }
+}
+// DIWebMemoryMonitor.readSnapshotAsync(callback)
+```
+
+**注意**：`getPss` 必须走 **taskpool**，禁止主线程。
+
+### DIWebLoadMonitor 集成
+
+| 时机 | 行为 |
+|------|------|
+| markClick | 异步采 memoryPssKbClick + webViewPoolSize |
+| markReady | 异步采 memoryPssKbEnd，算 memoryPssDeltaKb |
+| logReport | `REPORT 内存 \| 点击PSS=... 完成PSS=... Δ=... pool=...` |
+
+### WebLoadMonitorPage
+
+- 顶部：实时 PSS / Private / Shared / Native堆，2s 刷新
+- 每条记录：`PSS 180MB → 192MB  Δ +12MB  池 2`
+
+PSS 为**进程级**（含 Flutter + 所有 WebView），深链叠层时实时 PSS 会升高。

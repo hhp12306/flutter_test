@@ -62,18 +62,23 @@ Flutter openH5
 | 引擎层 | `diweb/*` | DiWeb 底层 |
 | Overlay 优化 | `diweb/DIWebOverlay.ets` | Demo 独有 |
 
-## 已实施优化（Demo 现状）
+## 已实施优化（Demo 现状，2026-06 真机验证）
 
 | 优化项 | 状态 | 实测收益 |
 |--------|------|---------|
+| about:blank 单次加载 | ✅ 已验证 | 消除 blank 竞态 / 双 load |
+| initializeWebEngine + preconnect | ✅ 已验证 | 启动即预连 |
+| prefetchPage | ✅ 已验证 | 同帖 1314ms→480ms，换帖 205ms |
+| WebViewPool prewarm(2) | ✅ Index | 池内 2 个 Controller |
+| WebViewPool acquire/release | ❌ DIWebPage 未接 | 公司 WebPageBridge 必接 |
+| Bridge 分档 community/full | ✅ 已实施 | community 1–11ms |
+| DIWebLoadMonitor 分段耗时 | ✅ 已实施 | HiLog `#N REPORT` |
+| **DIWebMemoryMonitor 内存** | ✅ 本次新增 | PSS Δ + 监控页实时 |
 | Index Overlay 单 WebView | ✅ 已实施 | Overlay ~0–1ms |
-| WebView 预热 | ✅ 发现 Tab | 本地首开 ~55ms |
-| Bridge 分档 community/full | ✅ 已实施 | community ~6–11ms |
-| URL 切换遮罩 pendingNavigation | ✅ 已实施 | 无旧页闪烁 |
-| 子资源错误过滤 | ✅ 已实施 | 避免误报失败 |
-| 加载监控 DIWebLoadMonitor | ✅ 已实施 | HiLog `#N REPORT` |
+| 子资源错误过滤 | ✅ 已实施 | favicon 404 忽略 |
 | 同 URL 缓存秒开 | ✅ 已实施 | ~5ms |
-| 错误 UI Stack 浮层 | ✅ 已实施 | 重试不 detach Web |
+
+**公司迁移主 skill**：`.cursor/skills/harmony-h5-fast-open-migrate/`（含 [ai-prompt-template.md](../harmony-h5-fast-open-migrate/ai-prompt-template.md)）
 
 ## Demo 仍可优化项（对照公司文档后的差距）
 
@@ -134,6 +139,8 @@ Flutter openH5
 | Bridge 注入 | DIWeb.ets | `onPageEnd` → `injectBridgeScript` |
 | 错误过滤 | DIWeb.ets | `shouldIgnoreWebError()` |
 | 监控 REPORT | DIWebLoadMonitor.ets | `logReport()` |
+| 内存监控 | DIWebMemoryMonitor.ets | `readSnapshotAsync()` |
+| 监控 UI | WebLoadMonitorPage.ets | 实时 PSS + 记录 Δ |
 
 ## 详细文档
 

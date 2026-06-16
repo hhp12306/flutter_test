@@ -1,17 +1,42 @@
 import router from '@ohos.router'
 import { DIWebLoadMonitor, DIWebLoadRecord, DIWEB_LOAD_MONITOR_VERSION_KEY } from '../../diweb/DIWebLoadMonitor'
+import { DIWebMemoryMonitor, DIWebMemorySnapshot } from '../../diweb/DIWebMemoryMonitor'
+import { WebViewPool } from '../../common/core/components/web/WebViewPool'
+
+const LIVE_MEMORY_REFRESH_MS: number = 2000
 
 /**
- * Web 加载监控页（原生）：展示从其它入口打开 H5 的耗时记录
+ * Web 加载监控页（原生）：展示从其它入口打开 H5 的耗时与内存记录
  */
 @Entry
 @Component
 struct WebLoadMonitorPage {
   @StorageLink(DIWEB_LOAD_MONITOR_VERSION_KEY) monitorVersion: number = 0
+  @State liveMemory: DIWebMemorySnapshot | null = null
+  @State liveMemoryLoading: boolean = true
+  private refreshTimer: number = -1
 
   aboutToAppear(): void {
     DIWebLoadMonitor.initStorage()
     DIWebLoadMonitor.logRecordsSummary()
+    this.refreshLiveMemory()
+    this.refreshTimer = setInterval(() => {
+      this.refreshLiveMemory()
+    }, LIVE_MEMORY_REFRESH_MS)
+  }
+
+  aboutToDisappear(): void {
+    if (this.refreshTimer >= 0) {
+      clearInterval(this.refreshTimer)
+      this.refreshTimer = -1
+    }
+  }
+
+  private refreshLiveMemory(): void {
+    DIWebMemoryMonitor.readSnapshotAsync((snapshot: DIWebMemorySnapshot) => {
+      this.liveMemory = snapshot
+      this.liveMemoryLoading = false
+    })
   }
 
   private getLoadRecords(): DIWebLoadRecord[] {
@@ -39,6 +64,34 @@ struct WebLoadMonitorPage {
     return '#007AFF'
   }
 
+  private memoryDeltaColor(deltaKb: number): string {
+    if (deltaKb <= 0) {
+      return '#34C759'
+    }
+    if (deltaKb >= 50 * 1024) {
+      return '#FF3B30'
+    }
+    if (deltaKb >= 20 * 1024) {
+      return '#FF9500'
+    }
+    return '#666666'
+  }
+
+  @Builder
+  private memoryMetric(label: string, value: string, emphasize: boolean = false) {
+    Column({ space: 4 }) {
+      Text(label)
+        .fontSize(11)
+        .fontColor('#999999')
+      Text(value)
+        .fontSize(emphasize ? 16 : 13)
+        .fontWeight(emphasize ? FontWeight.Medium : FontWeight.Normal)
+        .fontColor(emphasize ? '#007AFF' : '#333333')
+    }
+    .alignItems(HorizontalAlign.Start)
+    .layoutWeight(1)
+  }
+
   build() {
     Column() {
       Row() {
@@ -58,6 +111,16 @@ struct WebLoadMonitorPage {
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
 
+        Text('刷新')
+          .fontSize(14)
+          .fontColor('#007AFF')
+          .width(40)
+          .textAlign(TextAlign.Center)
+          .margin({ right: 4 })
+          .onClick(() => {
+            this.refreshLiveMemory()
+          })
+
         Text('清空')
           .fontSize(14)
           .fontColor('#007AFF')
@@ -74,13 +137,48 @@ struct WebLoadMonitorPage {
       .backgroundColor('#FFFFFF')
       .border({ width: { bottom: 0.5 }, color: '#E5E5E5' })
 
-      Column({ space: 8 }) {
-        Text('记录点击 → Overlay 显示 → H5 加载 → 遮罩消失 全链路耗时')
+      Column({ space: 10 }) {
+        Text('记录点击 → Overlay 显示 → H5 加载 → 遮罩消失 全链路耗时与内存')
           .fontSize(13)
           .fontColor('#999999')
           .width('100%')
 
-        Text(`共 ${this.getLoadRecords().length} 条记录`)
+        Column({ space: 8 }) {
+          Row() {
+            Text('当前进程内存')
+              .fontSize(14)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#333333')
+            Blank()
+            Text(this.liveMemoryLoading ? '读取中...' : `池 ${WebViewPool.getInstance().getPoolSize()}`)
+              .fontSize(12)
+              .fontColor('#999999')
+          }
+          .width('100%')
+
+          Row({ space: 8 }) {
+            this.memoryMetric('PSS',
+              this.liveMemory !== null ? DIWebMemoryMonitor.formatKb(this.liveMemory.pssKb) : '--', true)
+            this.memoryMetric('Private',
+              this.liveMemory !== null ? DIWebMemoryMonitor.formatKb(this.liveMemory.privateDirtyKb) : '--')
+            this.memoryMetric('Shared',
+              this.liveMemory !== null ? DIWebMemoryMonitor.formatKb(this.liveMemory.sharedDirtyKb) : '--')
+            this.memoryMetric('Native堆',
+              this.liveMemory !== null ? DIWebMemoryMonitor.formatKb(this.liveMemory.nativeHeapKb) : '--')
+          }
+          .width('100%')
+
+          Text('每 2s 自动刷新（hidebug/taskpool，仅调试）')
+            .fontSize(11)
+            .fontColor('#BBBBBB')
+            .width('100%')
+        }
+        .width('100%')
+        .padding(12)
+        .backgroundColor('#FFFFFF')
+        .borderRadius(12)
+
+        Text(`共 ${this.getLoadRecords().length} 条加载记录`)
           .fontSize(12)
           .fontColor('#BBBBBB')
           .width('100%')
@@ -186,6 +284,22 @@ struct WebLoadMonitorPage {
                     .fontColor('#666666')
                 }
                 .width('100%')
+
+                if (record.memoryPssKbEnd >= 0) {
+                  Row({ space: 12 }) {
+                    Text(`PSS ${DIWebMemoryMonitor.formatKb(record.memoryPssKbClick)} → ${DIWebMemoryMonitor.formatKb(record.memoryPssKbEnd)}`)
+                      .fontSize(12)
+                      .fontColor('#666666')
+                    Text(`Δ ${DIWebMemoryMonitor.formatDeltaKb(record.memoryPssDeltaKb)}`)
+                      .fontSize(12)
+                      .fontColor(this.memoryDeltaColor(record.memoryPssDeltaKb))
+                      .fontWeight(FontWeight.Medium)
+                    Text(`池 ${record.webViewPoolSize}`)
+                      .fontSize(12)
+                      .fontColor('#999999')
+                  }
+                  .width('100%')
+                }
 
                 if (!record.success) {
                   Text(record.errorMessage)

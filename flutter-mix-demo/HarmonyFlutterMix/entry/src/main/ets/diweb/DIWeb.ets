@@ -4,6 +4,7 @@ import { DIWebLog, DIWebLogTag } from './DIWebLog'
 import { DIWebLoadMonitor } from './DIWebLoadMonitor'
 import { normalizeRawfilePath, resolveRawfile } from './DIWebRawfile'
 import { DIWebSession } from './DIWebSession'
+import { WebEnginePrewarm } from './WebEnginePrewarm'
 
 /** Web 占位 src：避免默认 demo.html 写入历史栈导致返回多一层 */
 const DIWEB_BLANK_SRC: string = 'about:blank'
@@ -216,6 +217,8 @@ export struct DIWeb {
                   DIWebLog.infoT(DIWebLogTag.VIEW,
                     'onPageEnd blank -> loadTargetUrl url=%{public}s', this.url)
                   this.loadTargetUrl(this.url, 'afterBlankReady')
+                } else if (this.controllerReady && this.useSharedController && this.url.length === 0) {
+                  WebEnginePrewarm.prefetchCommunityDefaultPost(this.webCtrl, 'overlayBlankReady')
                 }
               }
             }

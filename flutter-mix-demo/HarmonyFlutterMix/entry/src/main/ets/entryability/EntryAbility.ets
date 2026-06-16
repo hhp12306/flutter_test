@@ -6,12 +6,15 @@ import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import { FlutterManager } from '@ohos/flutter_ohos';
 import { DIWebLog } from '../diweb/DIWebLog';
 import { DIWebLoadMonitor } from '../diweb/DIWebLoadMonitor';
+import { WebEnginePrewarm } from '../diweb/WebEnginePrewarm';
 import { DiscoverFlutterHolder } from '../flutter/DiscoverFlutterHolder';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     DIWebLog.info('EntryAbility onCreate')
     DIWebLoadMonitor.initStorage()
+    WebEnginePrewarm.initializeEngine('EntryAbility')
+    WebEnginePrewarm.preconnectCommunityDefault('EntryAbility')
     FlutterManager.getInstance().pushUIAbility(this)
   }
 

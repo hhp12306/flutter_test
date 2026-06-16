@@ -37,6 +37,24 @@ export class DIWebController {
     this.jsBridge.register(method, handler)
   }
 
+  /** 预取页面资源（主资源+子资源，不执行 JS；需 Web 组件已 attach，缓存约 5 分钟） */
+  prefetchPage(url: string, trigger: string = 'unknown'): boolean {
+    const urlDesc = url || '(empty)'
+    DIWebLog.infoT(DIWebLogTag.VIEW, 'prefetchPage trigger=%{public}s url=%{public}s',
+      trigger, urlDesc)
+    try {
+      this.webController.prefetchPage(url)
+      DIWebLog.infoT(DIWebLogTag.VIEW, 'prefetchPage called ok trigger=%{public}s url=%{public}s',
+        trigger, urlDesc)
+      return true
+    } catch (e) {
+      const err = e as Error
+      DIWebLog.warnT(DIWebLogTag.VIEW, 'prefetchPage failed trigger=%{public}s url=%{public}s err=%{public}s',
+        trigger, urlDesc, err.message ?? String(e))
+      return false
+    }
+  }
+
   /** 加载页面，支持 http(s) 与 rawfile Resource */
   loadPage(url: string | Resource, trigger: string = 'unknown'): void {
     this.bridgeInjected = false

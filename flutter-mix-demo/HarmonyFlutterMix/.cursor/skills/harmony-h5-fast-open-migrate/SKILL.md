@@ -2,19 +2,23 @@
 name: harmony-h5-fast-open-migrate
 description: >-
   将 HarmonyFlutterMix Demo 的 H5 快速打开优化迁移到公司 dilink-harmony 项目。
-  覆盖 WebView 预热池、about:blank 占位加载、Bridge 分档注入、Overlay 秒开、加载监控、错误过滤、E2E 追踪。
+  覆盖 about:blank 占位加载、initializeWebEngine、preconnect、prefetchPage、WebViewPool、Bridge 分档、
+  Overlay 秒开、DIWebLoadMonitor 分段耗时、DIWebMemoryMonitor 内存监控、错误过滤、E2E 追踪。
   在用户提到公司 H5 慢、WebView 优化、Flutter 跳 H5、WebPageBridge 性能迁移、dilink WebView 时使用。
 type: project
 ---
 
 # H5 快速打开 — 公司项目迁移 Skill
 
+> **Demo 已真机验证（2026-06）**：三层预热 + blank 单次加载 + 公司路由 push 链路通过；同帖二次打开 1314ms→480ms。
+
 ## 使用方式（明天带 Demo 进公司项目时）
 
-1. **打开本 Demo 仓库**作参照，在公司项目 Cursor 中 `@` 引用本 skill
-2. 先读 [demo-patterns.md](demo-patterns.md) 对照 Demo 关键代码
-3. 按下方「迁移优先级」逐项比对公司代码，输出差异表后再改
+1. 在公司项目 Cursor **Multi-root** 同时打开：公司仓库 + 本 Demo 仓库
+2. `@` 引用本 skill + [demo-patterns.md](demo-patterns.md) + [ai-prompt-template.md](ai-prompt-template.md)
+3. 用 [ai-prompt-template.md](ai-prompt-template.md) 里的提示词让 AI **先只读比对**，输出差异表后再改
 4. 每改一项用 HiLog 验证（见「验收标准」）
+5. 改完在监控页或 HiLog 对比优化前后 `displayReadyMs` / `memoryPssDeltaKb`
 
 ## 业务边界（与公司项目对齐）
 
@@ -52,6 +56,9 @@ onPageBegin/End 真实 UAT URL
 
 | 优化 | 预期收益 | Demo 文件 |
 |------|---------|-----------|
+| **initializeWebEngine** | 提前初始化 Web 引擎 | `WebEnginePrewarm.ets`, `EntryAbility.ets` |
+| **prepareForPageLoad** | DNS + Socket 预连接（不拉资源） | `WebEnginePrewarm.ets` |
+| **prefetchPage** | 预取主/子资源（不执行 JS，缓存约 5min） | `DIWebController`, Overlay prewarm |
 | **WebViewPool 预热** | 冷启动 Controller 150–250ms → 复用后更低 | `WebViewPool.ets`, `Index.ets` prewarm(2) |
 | **Bridge 分档注入** | community 6–11ms vs full 30–60ms | `BridgeProfile.ets`, `DIWebBridgeScript.ets` |
 | **按 scene 选 profile** | 社区帖用 community，商城/服务用对应档 | `BridgeConfig.profileForScene()` |
@@ -74,7 +81,49 @@ onPageBegin/End 真实 UAT URL
 |------|-----------|------|
 | 全链路 E2E | `DIWeb-E2E` | `WebFlowTracer.ets` |
 | 分段耗时 REPORT | `DIWeb-Monitor` | `DIWebLoadMonitor.ets` |
+| **内存监控** | `DIWeb-Monitor` | `DIWebMemoryMonitor.ets` |
 | 视图/加载 | `DIWeb-View` | `DIWeb.ets`, `DIWebController.ets` |
+| 监控 UI 页 | — | `pages/mine/WebLoadMonitorPage.ets` |
+
+**DIWebLoadMonitor 新增字段**（每次打开 H5 自动采集）：
+
+| 字段 | 说明 |
+|------|------|
+| `memoryPssKbClick` | 点击时进程 PSS（KB） |
+| `memoryPssKbEnd` | 加载完成时 PSS |
+| `memoryPssDeltaKb` | Δ = 完成 − 点击 |
+| `webViewPoolSize` | 点击时 WebViewPool 池内数量 |
+
+**DIWebMemoryMonitor**：`hidebug` + `taskpool` 异步读 PSS / Private / Shared / Native堆，**禁止主线程调 getPss**。
+
+**监控页**：顶部实时内存（2s 刷新）+ 每条记录 `PSS 180MB → 192MB  Δ +12MB`。
+
+### E. Demo 真机数据（迁移时作基线）
+
+| 场景 | 点击→Begin | 渲染 | 总计 | 备注 |
+|------|-----------|------|------|------|
+| 冷开同帖 pid=2406463 | 358ms | 954ms | **1314ms** | 首次 push 新 WebView |
+| 热开同帖 pid=2406463 | 268ms | 206ms | **480ms** | prefetch + HTTP 缓存 |
+| 换帖 pid=2406030 | 69ms | 133ms | **205ms** | 同 SPA 壳，预取收益最大 |
+
+HiLog 必现：`prefetchPage called ok`、`loadPage trigger=afterBlankReady`（仅 1 次）、`#N REPORT 内存`。
+
+---
+
+## Demo 已实施 / 未接入清单（明天对照用）
+
+| 优化 | Demo 状态 | 公司应迁 |
+|------|-----------|---------|
+| about:blank + scheduleInitialLoad | ✅ 已验证 | P0 必迁 |
+| initializeWebEngine + preconnect | ✅ EntryAbility + Tab | P1 |
+| prefetchPage | ✅ Overlay Controller 上预取 | P1 |
+| WebViewPool prewarm(2) | ✅ Index 启动 | P1 |
+| WebViewPool acquire/release | ❌ DIWebPage 未接 | **公司 WebPageBridge 必接** |
+| Bridge community 分档 | ✅ | P1 |
+| DIWebLoadMonitor 分段耗时 | ✅ | P1 |
+| DIWebMemoryMonitor 内存 | ✅ 本次新增 | P1（调试/压测） |
+| Overlay 秒开 | ✅ useOverlay 可选 | P2 试点 |
+| multi Web 内后退 | Demo 默认 false | **公司保留 true** |
 
 ---
 
@@ -103,11 +152,15 @@ WebviewController / loadUrl / onPageEnd / injectBridge
 
 ### Step 3：P1 公司路由加速（保留多层栈）
 
-1. **WebViewPool**：`Index.aboutToAppear` prewarm；`WebPageBridge.aboutToDisappear` release
-2. **WebPageBridge** 创建 Web 时 `acquire()` 池化 Controller，无则 new
-3. **Bridge 分档**：`RouterManager` 传 `bridgeProfile`，`onPageEnd` 按档注入
-4. **shouldIgnoreWebError**：忽略子资源 404、非主文档错误
-5. 接入 **DIWebLoadMonitor** + **WebFlowTracer**
+1. **WebEnginePrewarm**（新建或对齐 `diweb/WebEnginePrewarm.ets`）：
+   - `EntryAbility.onCreate` → `initializeEngine` + `preconnect`（URL 去 hash，30s 冷却）
+   - 社区 Tab `prewarmWeb` → `preconnect` + `prefetchPage`（60s 冷却，需 Web 已 attach）
+2. **prefetchPage**：在 Overlay/社区 Tab 的已 attach Controller 上预取**完整 URL（含 #）**
+3. **WebViewPool**：`Index` prewarm(2)；**WebPageBridge acquire/release**（Demo 尚未接，公司必做）
+4. **Bridge 分档**：`RouterManager` 传 `bridgeProfile`，`onPageEnd` 按档注入
+5. **shouldIgnoreWebError**：忽略 favicon 404 等子资源错误
+6. 接入 **DIWebLoadMonitor** + **WebFlowTracer** + **DIWebMemoryMonitor**
+7. 监控页展示耗时 + 内存 Δ（或接入公司已有 WebLoadMonitor）
 
 ### Step 4：P2 Overlay 试点（可选，multi=false 场景）
 
@@ -124,6 +177,9 @@ WebviewController / loadUrl / onPageEnd / injectBridge
 | 多层栈 | 连续 push 3 个帖子，返回 3 次回到 Tab |
 | Bridge | community 帖 `injectBridgeScript` < 15ms |
 | 误报 | favicon 404 不触发错误页 |
+| 预连接 | HiLog `DIWeb-Prewarm` 见 `initializeWebEngine OK` + `preconnect OK` + `prefetchPage called ok` |
+| 内存 | HiLog `#N REPORT 内存`；监控页实时 PSS 有数值 |
+| 性能 | 同帖二次打开 `displayReadyMs` 明显低于首次（参考 §E 基线） |
 
 ---
 
@@ -138,6 +194,10 @@ WebviewController / loadUrl / onPageEnd / injectBridge
 | `WebViewPool.ets` | JsApiWebController 池 / 公司 P1 方案 |
 | `DIWebOverlay.ets` | 新增（公司暂无则新建） |
 | `BridgeProfile.COMMUNITY` | 社区场景 Bridge 白名单 |
+| `WebEnginePrewarm.ets` | EntryAbility + 社区 Tab 预连接 + prefetch |
+| `DIWebMemoryMonitor.ets` | 新建或并入公司 WebLoadMonitor |
+| `DIWebLoadMonitor.ets` | 公司 WebLoadMonitor / 性能埋点 |
+| `WebLoadMonitorPage.ets` | 我的/调试页 或 Dev 入口 |
 
 ---
 
@@ -155,6 +215,8 @@ WebviewController / loadUrl / onPageEnd / injectBridge
 
 ## 参考
 
+- **给 AI 的提示词模板**：[ai-prompt-template.md](ai-prompt-template.md) ← 明天直接复制用
 - Demo 代码细节：[demo-patterns.md](demo-patterns.md)
 - 完整架构分析：`../harmony-flutter-diweb/harmony-flutter-diweb-optimization-analysis.md`
 - Demo 测试入口：`entry/.../pages/tabs/TestTab.ets` + `H5TestUrls.ets`
+- 监控页：`entry/.../pages/mine/WebLoadMonitorPage.ets`

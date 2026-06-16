@@ -2,6 +2,7 @@ import { DIWebController } from './DIWebController'
 import { DIWebRouteParams } from './DIWebRouter'
 import { DIWebBridgeProfile } from './DIWebTypes'
 import { DIWebLog, DIWebLogTag, DIWebNavTrace } from './DIWebLog'
+import { WebEnginePrewarm } from './WebEnginePrewarm'
 
 /** DIWebPage / Overlay 路由更新回调 */
 export type DIWebRouteApplyFn = (params: DIWebRouteParams) => void
@@ -53,6 +54,13 @@ export class DIWebSession {
 
   /** 社区 Tab 激活时预热 WebView 引擎（Overlay 内 about:blank 已挂载） */
   prewarmWeb(source: string): void {
+    WebEnginePrewarm.preconnectCommunityDefault(source)
+    if (this.isOverlayHostReady()) {
+      WebEnginePrewarm.prefetchCommunityDefaultPost(this.sharedController, source)
+    } else {
+      DIWebLog.infoT(DIWebLogTag.PREWARM,
+        'prefetchPage defer: overlayHostNotReady source=%{public}s', source)
+    }
     const overlayReady = this.isOverlayHostReady()
     const overlayVisible = this.isOverlayVisible()
     const webUrl = this.sharedController.getCurrentUrl()

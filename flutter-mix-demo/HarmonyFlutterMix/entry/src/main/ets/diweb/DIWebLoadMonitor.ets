@@ -1,6 +1,8 @@
 import { DIWebLog, DIWebLogTag } from './DIWebLog'
 import { getBridgeScriptSizeForProfile } from './DIWebBridgeScript'
 import { DIWebBridgeProfile } from './DIWebTypes'
+import { DIWebMemoryMonitor } from './DIWebMemoryMonitor'
+import { WebViewPool } from '../common/core/components/web/WebViewPool'
 
 /** 加载方式 */
 export type DIWebLoadMode = '首次加载' | '切换加载' | '同URL重载' | '缓存秒开'
@@ -32,6 +34,14 @@ export interface DIWebLoadRecord {
   bridgeScriptBytes: number
   /** 打开前是否已预热 WebView */
   prewarmUsed: boolean
+  /** 点击时进程 PSS（KB），-1 表示未采到 */
+  memoryPssKbClick: number
+  /** 加载完成时进程 PSS（KB） */
+  memoryPssKbEnd: number
+  /** 加载过程 PSS 增量（KB） */
+  memoryPssDeltaKb: number
+  /** 点击时 WebViewPool 池内数量 */
+  webViewPoolSize: number
   /** 点击 → Bridge 注入完成 */
   totalReadyMs: number
   /** 点击 → 用户可见（遮罩消失 / 缓存复用） */
@@ -54,6 +64,8 @@ interface PendingLoadSession {
   pageEndTime: number
   /** Overlay 遮罩消失时刻，0 表示尚未可见 */
   displayReadyTime: number
+  memoryPssKbClick: number
+  webViewPoolSize: number
 }
 
 const STORAGE_VERSION_KEY: string = 'diwebLoadMonitorVersion'
@@ -84,9 +96,22 @@ export class DIWebLoadMonitor {
       overlayVisibleTime: 0,
       pageBeginTime: 0,
       pageEndTime: 0,
-      displayReadyTime: 0
+      displayReadyTime: 0,
+      memoryPssKbClick: -1,
+      webViewPoolSize: WebViewPool.getInstance().getPoolSize()
     }
     DIWebLoadMonitor.pending = session
+    const sessionIdForMemory = sessionId
+    DIWebMemoryMonitor.readSnapshotAsync((snapshot) => {
+      const current = DIWebLoadMonitor.pending
+      if (current !== null && current.sessionId === sessionIdForMemory) {
+        current.memoryPssKbClick = snapshot.pssKb
+        DIWebLog.infoT(DIWebLogTag.MONITOR,
+          '#%{public}s STEP memoryClick | pss=%{public}s pool=%{public}s',
+          String(sessionIdForMemory), DIWebMemoryMonitor.formatKb(snapshot.pssKb),
+          String(WebViewPool.getInstance().getPoolSize()))
+      }
+    })
     DIWebLog.infoT(DIWebLogTag.MONITOR,
       '#%{public}s CLICK BEGIN | mode=%{public}s source=%{public}s bridge=%{public}s prewarm=%{public}s title=%{public}s url=%{public}s',
       String(sessionId), loadMode, source, bridgeProfile, String(prewarmUsed), session.title, url)
@@ -162,36 +187,17 @@ export class DIWebLoadMonitor {
     DIWebLog.infoT(DIWebLogTag.MONITOR,
       '#%{public}s STEP bridgeInject | +%{public}s ms cost=%{public}s ms',
       String(sessionId), String(bridgeReadyTime - pending.clickTime), String(bridgeInjectMs))
-    const pageBeginTime = pending.pageBeginTime > 0 ? pending.pageBeginTime : bridgeReadyTime
-    const pageEndTime = pending.pageEndTime > 0 ? pending.pageEndTime : bridgeReadyTime
-    const overlayVisibleTime = pending.overlayVisibleTime > 0 ? pending.overlayVisibleTime : pending.clickTime
-    const displayReadyTime = pending.displayReadyTime > 0 ? pending.displayReadyTime : bridgeReadyTime
-    const record: DIWebLoadRecord = {
-      title: pending.title,
-      url: pending.url,
-      source: pending.source,
-      loadMode: pending.loadMode,
-      clickTime: pending.clickTime,
-      overlayVisibleTime: overlayVisibleTime,
-      pageBeginTime: pageBeginTime,
-      pageEndTime: pageEndTime,
-      bridgeReadyTime: bridgeReadyTime,
-      displayReadyTime: displayReadyTime,
-      overlayVisibleMs: overlayVisibleTime - pending.clickTime,
-      clickToBeginMs: pageBeginTime - pending.clickTime,
-      pageRenderMs: pageEndTime - pageBeginTime,
-      pageLoadMs: pageEndTime - pending.clickTime,
-      bridgeInjectMs: bridgeInjectMs,
-      bridgeProfile: pending.bridgeProfile,
-      bridgeScriptBytes: getBridgeScriptSizeForProfile(pending.bridgeProfile),
-      prewarmUsed: pending.prewarmUsed,
-      totalReadyMs: bridgeReadyTime - pending.clickTime,
-      displayReadyMs: displayReadyTime - pending.clickTime,
-      success: success,
-      errorMessage: errorMessage
-    }
-    DIWebLoadMonitor.saveRecord(record, sessionId)
-    DIWebLoadMonitor.logReport(record, sessionId)
+    DIWebMemoryMonitor.readSnapshotAsync((endSnapshot) => {
+      const currentPending = DIWebLoadMonitor.pending
+      if (currentPending === null || currentPending.sessionId !== sessionId) {
+        DIWebLog.warnT(DIWebLogTag.MONITOR, '#%{public}s markReady memory skip: session ended', String(sessionId))
+        return
+      }
+      const record = DIWebLoadMonitor.buildRecord(currentPending, bridgeReadyTime, bridgeInjectMs, success,
+        errorMessage, endSnapshot.pssKb)
+      DIWebLoadMonitor.saveRecord(record, sessionId)
+      DIWebLoadMonitor.logReport(record, sessionId)
+    })
   }
 
   /** 缓存秒开：Web 未重新 loadUrl，直接复用 */
@@ -212,32 +218,24 @@ export class DIWebLoadMonitor {
     DIWebLog.infoT(DIWebLogTag.MONITOR,
       '#%{public}s STEP cacheReuse | +%{public}s ms from click (no reload)',
       String(sessionId), String(totalMs))
-    const record: DIWebLoadRecord = {
-      title: pending.title,
-      url: pending.url,
-      source: pending.source,
-      loadMode: '缓存秒开',
-      clickTime: pending.clickTime,
-      overlayVisibleTime: overlayVisibleTime,
-      pageBeginTime: 0,
-      pageEndTime: 0,
-      bridgeReadyTime: now,
-      displayReadyTime: now,
-      overlayVisibleMs: overlayVisibleTime - pending.clickTime,
-      clickToBeginMs: 0,
-      pageRenderMs: 0,
-      pageLoadMs: 0,
-      bridgeInjectMs: 0,
-      bridgeProfile: pending.bridgeProfile,
-      bridgeScriptBytes: getBridgeScriptSizeForProfile(pending.bridgeProfile),
-      prewarmUsed: pending.prewarmUsed,
-      totalReadyMs: totalMs,
-      displayReadyMs: totalMs,
-      success: true,
-      errorMessage: ''
-    }
-    DIWebLoadMonitor.saveRecord(record, sessionId)
-    DIWebLoadMonitor.logReport(record, sessionId)
+    DIWebMemoryMonitor.readSnapshotAsync((endSnapshot) => {
+      const currentPending = DIWebLoadMonitor.pending
+      if (currentPending === null || currentPending.sessionId !== sessionId) {
+        return
+      }
+      const record = DIWebLoadMonitor.buildRecord(currentPending, now, 0, true, '', endSnapshot.pssKb)
+      record.loadMode = '缓存秒开'
+      record.pageBeginTime = 0
+      record.pageEndTime = 0
+      record.clickToBeginMs = 0
+      record.pageRenderMs = 0
+      record.pageLoadMs = 0
+      record.bridgeInjectMs = 0
+      record.totalReadyMs = totalMs
+      record.displayReadyMs = totalMs
+      DIWebLoadMonitor.saveRecord(record, sessionId)
+      DIWebLoadMonitor.logReport(record, sessionId)
+    })
   }
 
   /** Overlay 遮罩消失：写入当前 pending，markReady 归档时使用 */
@@ -336,9 +334,56 @@ export class DIWebLoadMonitor {
       '#%{public}s REPORT 脚本 | profile=%{public}s bytes=%{public}s title=%{public}s url=%{public}s',
       String(sessionId), record.bridgeProfile, String(record.bridgeScriptBytes),
       record.title, record.url)
+    if (record.memoryPssKbEnd >= 0) {
+      DIWebLog.infoT(DIWebLogTag.MONITOR,
+        '#%{public}s REPORT 内存 | 点击PSS=%{public}s 完成PSS=%{public}s Δ=%{public}s pool=%{public}s',
+        String(sessionId), DIWebMemoryMonitor.formatKb(record.memoryPssKbClick),
+        DIWebMemoryMonitor.formatKb(record.memoryPssKbEnd),
+        DIWebMemoryMonitor.formatDeltaKb(record.memoryPssDeltaKb),
+        String(record.webViewPoolSize))
+    }
     if (!record.success && record.errorMessage.length > 0) {
       DIWebLog.errorT(DIWebLogTag.MONITOR, '#%{public}s REPORT error=%{public}s',
         String(sessionId), record.errorMessage)
+    }
+  }
+
+  private static buildRecord(pending: PendingLoadSession, bridgeReadyTime: number, bridgeInjectMs: number,
+    success: boolean, errorMessage: string, memoryPssKbEnd: number): DIWebLoadRecord {
+    const pageBeginTime = pending.pageBeginTime > 0 ? pending.pageBeginTime : bridgeReadyTime
+    const pageEndTime = pending.pageEndTime > 0 ? pending.pageEndTime : bridgeReadyTime
+    const overlayVisibleTime = pending.overlayVisibleTime > 0 ? pending.overlayVisibleTime : pending.clickTime
+    const displayReadyTime = pending.displayReadyTime > 0 ? pending.displayReadyTime : bridgeReadyTime
+    const memoryPssKbClick = pending.memoryPssKbClick
+    const memoryPssDeltaKb = memoryPssKbClick >= 0 && memoryPssKbEnd >= 0
+      ? memoryPssKbEnd - memoryPssKbClick : 0
+    return {
+      title: pending.title,
+      url: pending.url,
+      source: pending.source,
+      loadMode: pending.loadMode,
+      clickTime: pending.clickTime,
+      overlayVisibleTime: overlayVisibleTime,
+      pageBeginTime: pageBeginTime,
+      pageEndTime: pageEndTime,
+      bridgeReadyTime: bridgeReadyTime,
+      displayReadyTime: displayReadyTime,
+      overlayVisibleMs: overlayVisibleTime - pending.clickTime,
+      clickToBeginMs: pageBeginTime - pending.clickTime,
+      pageRenderMs: pageEndTime - pageBeginTime,
+      pageLoadMs: pageEndTime - pending.clickTime,
+      bridgeInjectMs: bridgeInjectMs,
+      bridgeProfile: pending.bridgeProfile,
+      bridgeScriptBytes: getBridgeScriptSizeForProfile(pending.bridgeProfile),
+      prewarmUsed: pending.prewarmUsed,
+      memoryPssKbClick: memoryPssKbClick,
+      memoryPssKbEnd: memoryPssKbEnd,
+      memoryPssDeltaKb: memoryPssDeltaKb,
+      webViewPoolSize: pending.webViewPoolSize,
+      totalReadyMs: bridgeReadyTime - pending.clickTime,
+      displayReadyMs: displayReadyTime - pending.clickTime,
+      success: success,
+      errorMessage: errorMessage
     }
   }
 
